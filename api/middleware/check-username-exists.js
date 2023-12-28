@@ -17,7 +17,7 @@ module.exports = (req, res, next) => {
       }
       if (!found[0] && req.url === '/register') return next()
       if (!found[0] && req.url === '/login') return next({
-        status: 404,
+        status: 401,
         message: 'invalid credentials'
       })
     })
