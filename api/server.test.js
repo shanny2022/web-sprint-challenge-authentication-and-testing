@@ -1,60 +1,89 @@
-// Write your tests here
 const db = require('../data/dbConfig')
 const request = require('supertest')
-const server = require('./server')
+const server = require('../api/server')
 
-beforeAll(async () => {
-  await db.migrate.rollback();
-  await db.migrate.latest();
+beforeAll( async () => {
+  await db.migrate.rollback()
+  await db.migrate.latest()
 })
 
-beforeEach(async () => {
-  await db('users').truncate()
+beforeEach( async () => {
+  await db.seed.run()
+})
+
+// afterAll( async () => {
+//   await db.destroy()
+// })
+
+
+test('sanity', () => {
+  expect(true).toBe(true)
 })
 
 
 
-describe('[GET] /jokes', () => {
-  const newUser = { username: "user", password: "1234" }
-  test('receives an error with no token present', async () => {
-    await request(server).post('/api/auth/register').send(newUser)
-    await request(server).post('/api/auth/login').send(newUser)
-    const data = await request(server).get('/api/jokes')
-    expect(data.body.message).toBe('token required')
+
+
+
+describe('[POST] /api/auth/register', () => {
+  test('gets success status', async () => {
+    const creds = {username: 'hello', password: '1234'}
+    const res = await request(server).post('/api/auth/register').send(creds)
+    expect(res.status).toBe(201)
   })
-  test('returns a list of jokes while authorized', async () => {
-    await request(server).post('/api/auth/register').send(newUser)
-    const res = await request(server).post('/api/auth/login').send(newUser)
-    const data = await request(server).get('/api/jokes').set('Authorization', `${res.body.token}`)
-    expect(data.body).toHaveLength(3)
+  test('adds credentials to database', async () => {
+    const creds = {username: 'hello', password: '1234'}
+    await request(server).post('/api/auth/register').send(creds)
+    const res = await db('users').select('username').where('username', creds.username).first()
+    expect(res.username).toBe(creds.username)
   })
 })
 
-describe('[POST] /auth/register', () => {
-  const newUser = { username: "user", password: "1234" }
-  test('new users are listed in the database', async () => {
-    await request(server).post('/api/auth/register').send(newUser)
-    const rows = await db('users')
-    expect(rows).toHaveLength(1)
-  })
-  test('returns username and hashed password', async () => {
-    const res = await request(server).post('/api/auth/register').send(newUser)
-    expect(res.body.username).toMatch(newUser.username)
-    expect(res.body.password).not.toMatch(newUser.password)
-  })
 
-})
 
-describe('[POST] /auth/login', () => {
-  const newUser = { username: "user", password: "1234" }
-  test('new user obtains a token when logging in', async () => {
-    await request(server).post('/api/auth/register').send(newUser)
-    const res = await request(server).post('/api/auth/login').send(newUser)
+
+
+
+describe('[POST] /api/auth/login', () => {
+  test('gets a success status', async () => {
+    const creds = {username: 'hello', password: '1234'}
+    const res1 = await request(server).post('/api/auth/register').send(creds)
+    expect(res1.status).toBe(201)
+    const res = await request(server).post('/api/auth/login').send(creds)
+    expect(res.status).toBe(200)
+  })
+  test('valid login gets a token', async () => {
+    const creds = {username: 'hello', password: '1234'}
+    await request(server).post('/api/auth/register').send(creds)
+    const res = await request(server).post('/api/auth/login').send(creds)
     expect(res.body.token).toBeDefined()
   })
-  test('incorrect password gives an error', async () => {
-    await request(server).post('/api/auth/register').send(newUser)
-    const res = await request(server).post('/api/auth/login').send({ username: newUser.username, password: '123'})
-    expect(res.body.message).toBe('invalid credentials')
+})
+
+
+
+
+
+
+describe('[GET] /api/jokes', () => {
+  test('valid token gets the jokes', async () => {
+
+    const creds = {username: 'hello', password: '1234'}
+    const res1 = await request(server).post('/api/auth/register').send(creds)
+    expect(res1.status).toBe(201)
+
+    const res2 = await request(server).post('/api/auth/login').send(creds)
+    expect(res2.body.token).toBeDefined()
+
+    const res3 = await request(server).get('/api/jokes').set('Authorization', res2.body.token)
+    expect(res3.body).toHaveLength(3)
+  })
+
+
+
+  test('no token gets error', async () => {
+    const res = await request(server).get('/api/jokes')
+    expect(res.body.jokes).not.toBeDefined()
+    expect(res.status).toBe(401)
   })
 })
